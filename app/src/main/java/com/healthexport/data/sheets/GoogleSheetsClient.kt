@@ -27,10 +27,14 @@ class GoogleSheetsClient @Inject constructor(
     private val jsonFactory  = GsonFactory.getDefaultInstance()
 
     fun build(accountEmail: String): Sheets {
+        // Use explicit method call instead of Kotlin property assignment:
+        // credential.selectedAccountName = x would set the public Java field directly,
+        // bypassing setSelectedAccountName() which also initialises the internal
+        // Account object that getToken() uses. Without it, getToken() sees null.
         val credential = GoogleAccountCredential
             .usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS))
             .setBackOff(ExponentialBackOff())
-        credential.selectedAccountName = accountEmail
+            .apply { setSelectedAccountName(accountEmail) }
 
         return Sheets.Builder(transport, jsonFactory, credential)
             .setApplicationName("HealthExport")
