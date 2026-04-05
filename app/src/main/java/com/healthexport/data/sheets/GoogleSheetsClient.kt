@@ -1,5 +1,6 @@
 package com.healthexport.data.sheets
 
+import android.accounts.Account
 import android.content.Context
 import android.util.Log
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
@@ -28,12 +29,15 @@ class GoogleSheetsClient @Inject constructor(
     private val jsonFactory  = GsonFactory.getDefaultInstance()
 
     fun build(accountEmail: String): Sheets {
-        Log.d(TAG, "build() accountEmail='$accountEmail' (isBlank=${accountEmail.isBlank()})")
+        // setSelectedAccountName() in google-api-client-android 2.7.0 sets the String field
+        // but getSelectedAccountName() reads from selectedAccount.name (the Account object).
+        // getToken() internally uses the Account object → selectedAccountName comes back null.
+        // Fix: bypass the string setter and pass the Account object directly.
         val credential = GoogleAccountCredential
             .usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS))
             .setBackOff(ExponentialBackOff())
-            .apply { setSelectedAccountName(accountEmail) }
-        Log.d(TAG, "build() credential.selectedAccountName='${credential.selectedAccountName}'")
+            .setSelectedAccount(Account(accountEmail, "com.google"))
+        Log.d(TAG, "build() email='$accountEmail' selectedAccountName='${credential.selectedAccountName}'")
 
         return Sheets.Builder(transport, jsonFactory, credential)
             .setApplicationName("HealthExport")
