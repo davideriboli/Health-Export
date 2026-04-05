@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DateRangePickerState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -146,14 +145,7 @@ fun Step2TimeRangeScreen(
                     state    = pickerState,
                     modifier = Modifier.fillMaxWidth(),
                     title    = null,
-                    headline = {
-                        DatePickerDefaults.DateRangePickerHeadline(
-                            selectedStartDateMillis = pickerState.selectedStartDateMillis,
-                            selectedEndDateMillis   = pickerState.selectedEndDateMillis,
-                            displayMode            = pickerState.displayMode,
-                            modifier               = Modifier.padding(horizontal = 16.dp),
-                        )
-                    },
+                    headline = null,
                 )
             }
 

@@ -70,10 +70,6 @@ private val DarkColorScheme = darkColorScheme(
     onSurfaceVariant     = Neutral80,
 )
 
-// Neutral90 is not declared above — add it here for dark scheme completeness.
-private val Neutral80 = androidx.compose.ui.graphics.Color(0xFFD4C8C4)
-private val Neutral90 = androidx.compose.ui.graphics.Color(0xFFE8DDD7)
-
 // ── Public theme composable ────────────────────────────────────────────────
 
 /**

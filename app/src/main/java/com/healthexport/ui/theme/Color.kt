@@ -26,6 +26,7 @@ val Tertiary10     = Color(0xFF072010)
 val Neutral99      = Color(0xFFFFFBF8)   // background (warm white)
 val Neutral95      = Color(0xFFF5EDE7)   // surface variant
 val Neutral90      = Color(0xFFE8DDD7)
+val Neutral80      = Color(0xFFD4C8C4)
 val Neutral20      = Color(0xFF3C3230)
 val Neutral10      = Color(0xFF221A18)
 

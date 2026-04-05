@@ -362,10 +362,10 @@ data class RecordSchema(
             // ── Reproductive ──────────────────────────────────────────────
 
             HealthRecordType.MenstruationFlow to RecordSchema(
-                columns = listOf("time", "flow", "is_abnormal", "source_app"),
+                columns = listOf("time", "flow", "source_app"),
                 extractRows = { r ->
                     r as MenstruationFlowRecord
-                    listOf(listOf(r.time.fmt(), r.flow, r.isAbnormal, SOURCE_APP))
+                    listOf(listOf(r.time.fmt(), r.flow, SOURCE_APP))
                 },
             ),
 
