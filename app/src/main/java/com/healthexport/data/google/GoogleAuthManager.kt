@@ -1,6 +1,7 @@
 package com.healthexport.data.google
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -12,6 +13,8 @@ import com.healthexport.BuildConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val TAG = "GoogleAuthManager"
 
 /**
  * Handles Google Sign-In via Credential Manager (modern replacement for GoogleSignIn API).
@@ -36,8 +39,15 @@ class GoogleAuthManager @Inject constructor(
      * an Activity context so Credential Manager can anchor the bottom sheet.
      */
     suspend fun signIn(activityContext: Context): GoogleSignInResult {
+        val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
+        if (clientId.isBlank()) {
+            Log.e(TAG, "GOOGLE_WEB_CLIENT_ID is empty — set it in local.properties or GitHub Secrets")
+            return GoogleSignInResult.Error("GOOGLE_WEB_CLIENT_ID non configurato. Controlla local.properties o i GitHub Secrets.")
+        }
+        Log.d(TAG, "Starting sign-in with clientId=${clientId.take(20)}…")
+
         val googleIdOption = GetGoogleIdOption.Builder()
-            .setServerClientId(BuildConfig.GOOGLE_WEB_CLIENT_ID)
+            .setServerClientId(clientId)
             .setFilterByAuthorizedAccounts(false) // show all device accounts, not only pre-authorised
             .setAutoSelectEnabled(false)           // always show the picker
             .build()
@@ -63,13 +73,17 @@ class GoogleAuthManager @Inject constructor(
             }
         } catch (_: GetCredentialCancellationException) {
             GoogleSignInResult.Cancelled
-        } catch (_: NoCredentialException) {
+        } catch (e: NoCredentialException) {
+            Log.e(TAG, "NoCredentialException: ${e.message}", e)
             GoogleSignInResult.Error(
-                "Nessun account Google trovato sul dispositivo. " +
-                "Aggiungi un account nelle impostazioni di sistema."
+                "Nessun account Google trovato. Verifica che:\n" +
+                "• Il dispositivo abbia un account Google configurato\n" +
+                "• L'SHA-1 del keystore sia registrato in Google Cloud Console\n" +
+                "• Il package name nel Cloud Console corrisponda a com.healthexport"
             )
         } catch (e: Exception) {
-            GoogleSignInResult.Error(e.message ?: "Errore durante il sign-in")
+            Log.e(TAG, "Sign-in failed: ${e::class.simpleName}: ${e.message}", e)
+            GoogleSignInResult.Error("${e::class.simpleName}: ${e.message}")
         }
     }
 }

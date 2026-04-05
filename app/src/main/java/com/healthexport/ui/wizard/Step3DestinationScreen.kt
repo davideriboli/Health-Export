@@ -99,7 +99,7 @@ fun Step3DestinationScreen(
                                     viewModel.onSignInSuccess(result.email, result.displayName)
                                 }
                                 is GoogleSignInResult.Error -> {
-                                    signInError = "Accesso non riuscito. Riprova."
+                                    signInError = result.message
                                 }
                                 GoogleSignInResult.Cancelled -> Unit
                             }
