@@ -4,6 +4,11 @@
     <!-- Internet access for Google Sheets API -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Required by GoogleAccountCredential to obtain OAuth2 tokens.
+         On API 26+ the system restricts listing all accounts, but token
+         acquisition for a known account (email from Credential Manager) works. -->
+    <uses-permission android:name="android.permission.GET_ACCOUNTS" />
+
     <!-- Health Connect permissions — declared here so the system recognises them.
          The actual runtime grant is requested via HealthConnectClient.requestPermissions(). -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />

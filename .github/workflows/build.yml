@@ -44,10 +44,11 @@ jobs:
       # ── Build ────────────────────────────────────────────────────────────
       - name: Build release APK
         env:
-          KEYSTORE_FILE:     ${{ github.event_name != 'pull_request' && format('{0}/release.jks', runner.temp) || '' }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS:         ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD:      ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_FILE:        ${{ github.event_name != 'pull_request' && format('{0}/release.jks', runner.temp) || '' }}
+          KEYSTORE_PASSWORD:    ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS:            ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD:         ${{ secrets.KEY_PASSWORD }}
+          GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
         run: gradle assembleRelease --stacktrace
 
       # ── Build debug APK on PRs (no signing) ─────────────────────────────

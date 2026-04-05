@@ -19,8 +19,9 @@ class UserPreferencesRepository @Inject constructor(
     // ── Keys ─────────────────────────────────────────────────────────────
 
     private object Keys {
-        val SELECTED_TYPE_IDS = stringSetPreferencesKey("selected_type_ids")
-        val TIME_RANGE        = stringPreferencesKey("time_range")
+        val SELECTED_TYPE_IDS  = stringSetPreferencesKey("selected_type_ids")
+        val TIME_RANGE         = stringPreferencesKey("time_range")
+        val GOOGLE_ACCOUNT     = stringPreferencesKey("google_account_email")
     }
 
     // ── Selected record types ─────────────────────────────────────────────
@@ -45,6 +46,19 @@ class UserPreferencesRepository @Inject constructor(
     suspend fun saveTimeRange(range: TimeRange) {
         dataStore.edit { prefs ->
             prefs[Keys.TIME_RANGE] = range.serialise()
+        }
+    }
+
+    // ── Google account ────────────────────────────────────────────────────
+
+    val googleAccountEmailFlow: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[Keys.GOOGLE_ACCOUNT]
+    }
+
+    suspend fun saveGoogleAccountEmail(email: String?) {
+        dataStore.edit { prefs ->
+            if (email != null) prefs[Keys.GOOGLE_ACCOUNT] = email
+            else prefs.remove(Keys.GOOGLE_ACCOUNT)
         }
     }
 }

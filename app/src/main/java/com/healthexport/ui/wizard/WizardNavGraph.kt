@@ -64,14 +64,16 @@ fun WizardNavGraph(
         }
         composable(WizardRoute.Step3.route) {
             Step3DestinationScreen(
-                onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(WizardRoute.Step4.route) },
+                viewModel = viewModel,
+                onBack    = { navController.popBackStack() },
+                onNext    = { navController.navigate(WizardRoute.Step4.route) },
             )
         }
         composable(WizardRoute.Step4.route) {
             Step4SummaryScreen(
-                onBack   = { navController.popBackStack() },
-                onExport = { /* Module 3 */ },
+                viewModel = viewModel,
+                onBack    = { navController.popBackStack() },
+                onExport  = { /* Module 5: schedule WorkManager */ },
             )
         }
     }

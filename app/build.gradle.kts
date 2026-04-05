@@ -16,6 +16,18 @@ android {
         targetSdk     = 35
         versionCode   = 1
         versionName   = "0.1.0"
+
+        // Google OAuth2 Web Client ID — required by Credential Manager.
+        // Set in local.properties (GOOGLE_WEB_CLIENT_ID=xxx.apps.googleusercontent.com)
+        // or via the GOOGLE_WEB_CLIENT_ID environment variable in CI.
+        val localProps = java.util.Properties().also { props ->
+            rootProject.file("local.properties").takeIf { it.exists() }
+                ?.inputStream()?.use { props.load(it) }
+        }
+        val webClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID")
+            ?: System.getenv("GOOGLE_WEB_CLIENT_ID")
+            ?: ""
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$webClientId\"")
     }
 
     signingConfigs {
@@ -65,7 +77,8 @@ android {
     }
 
     buildFeatures {
-        compose = true
+        compose      = true
+        buildConfig  = true
     }
 
     // Avoid duplicate META-INF files from Google API client libs
