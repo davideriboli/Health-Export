@@ -73,7 +73,10 @@ fun WizardNavGraph(
             Step4SummaryScreen(
                 viewModel = viewModel,
                 onBack    = { navController.popBackStack() },
-                onExport  = { /* Module 5: schedule WorkManager */ },
+                onExport  = {
+                    viewModel.resetExportState()
+                    navController.popBackStack(WizardRoute.Step1.route, inclusive = false)
+                },
             )
         }
     }

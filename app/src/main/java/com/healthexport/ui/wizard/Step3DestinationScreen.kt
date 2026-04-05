@@ -113,9 +113,9 @@ fun Step3DestinationScreen(
                     Spacer(Modifier.padding(horizontal = 4.dp))
                     Text("Accedi con Google")
                 }
-                if (signInError != null) {
+                signInError?.let { err ->
                     Text(
-                        text     = signInError!!,
+                        text     = err,
                         style    = MaterialTheme.typography.bodySmall,
                         color    = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 4.dp),

@@ -31,6 +31,11 @@
 -keep class dagger.hilt.** { *; }
 -keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
 
+# ── Dagger Assisted Inject — used by @HiltWorker ──────────────────────────────
+-keep class dagger.assisted.** { *; }
+-keepclassmembers @dagger.hilt.android.HiltAndroidApp class * { *; }
+-keep @dagger.hilt.android.HiltWorker class * { <init>(...); }
+
 # ── Kotlin coroutines ─────────────────────────────────────────────────────────
 -dontwarn kotlinx.coroutines.**
 

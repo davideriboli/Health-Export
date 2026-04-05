@@ -65,7 +65,12 @@ sealed class TimeRange {
             value == "LAST_MONTH" -> LastMonth
             value.startsWith("CUSTOM|") -> {
                 val parts = value.split("|")
-                Custom(LocalDate.parse(parts[1]), LocalDate.parse(parts[2]))
+                if (parts.size >= 3) {
+                    runCatching { Custom(LocalDate.parse(parts[1]), LocalDate.parse(parts[2])) }
+                        .getOrDefault(LastWeek)
+                } else {
+                    LastWeek
+                }
             }
             else -> LastWeek
         }
