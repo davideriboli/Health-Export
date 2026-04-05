@@ -3,11 +3,9 @@ package com.healthexport.ui.wizard
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,8 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,13 +39,12 @@ fun Step4SummaryScreen(
     onBack: () -> Unit,
     onExport: () -> Unit,
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState   by viewModel.uiState.collectAsStateWithLifecycle()
     val isExporting = uiState.exportState is ExportState.InProgress
 
-    // Launcher for Sheets auth recovery (emitted as WizardEvent)
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { /* user has authorised — can retry */ }
+    ) { /* user authorised — they can retry */ }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -66,7 +61,7 @@ fun Step4SummaryScreen(
         onBack      = if (isExporting) null else onBack,
         onNext      = {
             when (uiState.exportState) {
-                is ExportState.Success -> onExport()           // go to next flow / restart
+                is ExportState.Success -> onExport()
                 else                   -> viewModel.startExport()
             }
         },
@@ -83,31 +78,25 @@ fun Step4SummaryScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
+
             // ── Summary cards ─────────────────────────────────────────────
-            SummaryCard(label = "Tipi di dati") {
+            SummaryCard(label = "Dati") {
+                Text("${uiState.selectedTypes.size} tipi selezionati",
+                    style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    text  = "${uiState.selectedTypes.size} tipi selezionati",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    text  = uiState.selectedTypes.joinToString(", ") { it.displayName },
+                    uiState.selectedTypes.joinToString(", ") { it.displayName },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
             Spacer(Modifier.height(8.dp))
             SummaryCard(label = "Intervallo") {
-                Text(uiState.timeRange.displayName,
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(uiState.timeRange.displayName, style = MaterialTheme.typography.bodyMedium)
             }
-
             Spacer(Modifier.height(8.dp))
             SummaryCard(label = "Account") {
-                Text(uiState.googleAccountEmail ?: "–",
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(uiState.googleAccountEmail ?: "–", style = MaterialTheme.typography.bodyMedium)
             }
-
             Spacer(Modifier.height(8.dp))
             SummaryCard(label = "Foglio") {
                 val dest = when (uiState.spreadsheetMode) {
@@ -116,7 +105,6 @@ fun Step4SummaryScreen(
                 }
                 Text(dest, style = MaterialTheme.typography.bodyMedium)
             }
-
             Spacer(Modifier.height(8.dp))
             SummaryCard(label = "Modalità") {
                 val mode = when (uiState.exportMode) {
@@ -140,66 +128,11 @@ fun Step4SummaryScreen(
             when (val state = uiState.exportState) {
                 is ExportState.Idle -> Unit
 
-                is ExportState.InProgress -> {
-                    Column(
-                        modifier          = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text("Esportazione in corso…",
-                            style = MaterialTheme.typography.titleSmall)
-                        if (state.currentType.isNotEmpty()) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(state.currentType,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        LinearProgressIndicator(
-                            progress       = { state.progress },
-                            modifier       = Modifier.fillMaxWidth(),
-                            strokeCap      = StrokeCap.Round,
-                        )
-                    }
-                }
+                is ExportState.InProgress -> ExportProgressBlock(state)
 
-                is ExportState.Success -> {
-                    Row(
-                        modifier          = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null,
-                            tint     = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.padding(horizontal = 6.dp))
-                        Text("Export completato!",
-                            style      = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color      = MaterialTheme.colorScheme.primary)
-                    }
-                }
+                is ExportState.Success -> ExportSuccessBlock(state)
 
-                is ExportState.Error -> {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier          = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Default.Error, contentDescription = null,
-                                tint     = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.padding(horizontal = 6.dp))
-                            Text(state.message,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
+                is ExportState.Error -> ExportErrorBlock(state.message)
             }
 
             Spacer(Modifier.height(16.dp))
@@ -207,21 +140,135 @@ fun Step4SummaryScreen(
     }
 }
 
+// ── Export state composables ──────────────────────────────────────────────────
+
+@Composable
+private fun ExportProgressBlock(state: ExportState.InProgress) {
+    Column(
+        modifier            = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Esportazione in corso…", style = MaterialTheme.typography.titleSmall)
+
+        if (state.currentType.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text  = state.currentType,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (state.recordCount > 0) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text  = "${state.recordCount} righe",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        LinearProgressIndicator(
+            progress  = { state.progress },
+            modifier  = Modifier.fillMaxWidth(),
+            strokeCap = StrokeCap.Round,
+        )
+
+        if (state.totalTypes > 0) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text  = "${state.currentIndex + 1} / ${state.totalTypes}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportSuccessBlock(state: ExportState.Success) {
+    Column(
+        modifier            = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector        = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint               = MaterialTheme.colorScheme.primary,
+                modifier           = Modifier.size(24.dp),
+            )
+            Spacer(Modifier.padding(horizontal = 6.dp))
+            Text(
+                text       = "Export completato!",
+                style      = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color      = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(
+            text  = "${state.totalRows} righe esportate",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (state.skippedTypes > 0) {
+            Text(
+                text  = "${state.skippedTypes} ${if (state.skippedTypes == 1) "tipo saltato" else "tipi saltati"} (nessun dato nel periodo)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExportErrorBlock(message: String) {
+    Surface(
+        shape    = RoundedCornerShape(12.dp),
+        color    = MaterialTheme.colorScheme.errorContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier          = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Error,
+                contentDescription = null,
+                tint               = MaterialTheme.colorScheme.onErrorContainer,
+                modifier           = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.padding(horizontal = 6.dp))
+            Text(
+                text     = message,
+                style    = MaterialTheme.typography.bodySmall,
+                color    = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+// ── Shared card ───────────────────────────────────────────────────────────────
+
 @Composable
 private fun SummaryCard(
     label: String,
     content: @Composable () -> Unit,
 ) {
     Surface(
-        shape         = RoundedCornerShape(12.dp),
-        color         = MaterialTheme.colorScheme.surfaceVariant,
-        modifier      = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(12.dp),
+        color    = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(label,
+            Text(
+                text       = label,
                 style      = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color      = MaterialTheme.colorScheme.primary)
+                color      = MaterialTheme.colorScheme.primary,
+            )
             Spacer(Modifier.height(4.dp))
             content()
         }

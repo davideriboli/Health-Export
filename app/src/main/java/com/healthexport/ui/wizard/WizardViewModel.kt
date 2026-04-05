@@ -15,6 +15,7 @@ import com.healthexport.data.preferences.UserPreferencesRepository
 import com.healthexport.data.sheets.GoogleSheetsRepository
 import com.healthexport.data.sheets.RecordSchema
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -28,18 +29,39 @@ import javax.inject.Inject
 
 // ── Enums ─────────────────────────────────────────────────────────────────────
 
-enum class SdkStatus     { CHECKING, AVAILABLE, UNAVAILABLE, UPDATE_REQUIRED }
+enum class SdkStatus       { CHECKING, AVAILABLE, UNAVAILABLE, UPDATE_REQUIRED }
 enum class SpreadsheetMode { CREATE_NEW, USE_EXISTING }
-enum class ExportMode    { OVERWRITE, APPEND }
-enum class ScheduleType  { ONE_SHOT, DAILY, WEEKLY, MONTHLY }
+enum class ExportMode      { OVERWRITE, APPEND }
+enum class ScheduleType    { ONE_SHOT, DAILY, WEEKLY, MONTHLY }
 
 // ── Export state ──────────────────────────────────────────────────────────────
 
 sealed class ExportState {
-    data object Idle        : ExportState()
-    data class  InProgress(val currentType: String = "", val progress: Float = 0f) : ExportState()
-    data object Success     : ExportState()
-    data class  Error(val message: String) : ExportState()
+    data object Idle : ExportState()
+
+    data class InProgress(
+        val currentType: String  = "",
+        val currentIndex: Int    = 0,
+        val totalTypes: Int      = 0,
+        val recordCount: Int     = 0,   // records found for current type
+    ) : ExportState() {
+        val progress: Float
+            get() = if (totalTypes > 0) currentIndex.toFloat() / totalTypes else 0f
+    }
+
+    data class Success(
+        val totalRows: Int,
+        val skippedTypes: Int,
+        val spreadsheetId: String,
+    ) : ExportState()
+
+    data class Error(val message: String) : ExportState()
+}
+
+// ── One-shot events ───────────────────────────────────────────────────────────
+
+sealed class WizardEvent {
+    data class SheetsAuthRequired(val intent: Intent) : WizardEvent()
 }
 
 // ── UI state ──────────────────────────────────────────────────────────────────
@@ -63,13 +85,6 @@ data class WizardUiState(
     val exportState: ExportState             = ExportState.Idle,
 )
 
-// ── One-shot events ───────────────────────────────────────────────────────────
-
-sealed class WizardEvent {
-    /** User must authorise Sheets access — launch this intent. */
-    data class SheetsAuthRequired(val intent: Intent) : WizardEvent()
-}
-
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
 @HiltViewModel
@@ -77,7 +92,7 @@ class WizardViewModel @Inject constructor(
     private val healthConnectRepository: HealthConnectRepository,
     private val preferencesRepository: UserPreferencesRepository,
     private val sheetsRepository: GoogleSheetsRepository,
-    val authManager: GoogleAuthManager,           // exposed for composable sign-in call
+    val authManager: GoogleAuthManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WizardUiState())
@@ -101,8 +116,11 @@ class WizardViewModel @Inject constructor(
                 preferencesRepository.googleAccountEmailFlow,
             ) { types, range, email -> Triple(types, range, email) }
                 .collect { (types, range, email) ->
-                    _uiState.update { it.copy(selectedTypes = types, timeRange = range,
-                        googleAccountEmail = email) }
+                    _uiState.update { it.copy(
+                        selectedTypes      = types,
+                        timeRange          = range,
+                        googleAccountEmail = email,
+                    )}
                 }
         }
 
@@ -118,9 +136,8 @@ class WizardViewModel @Inject constructor(
         }
     }
 
-    fun onPermissionsResult(granted: Set<String>) {
+    fun onPermissionsResult(granted: Set<String>) =
         _uiState.update { it.copy(grantedPermissions = granted) }
-    }
 
     fun requiredPermissions(): Set<String> =
         healthConnectRepository.requiredPermissionsFor(HealthRecordType.all)
@@ -129,17 +146,17 @@ class WizardViewModel @Inject constructor(
         healthConnectRepository.missingPermissions(
             HealthRecordType.all, _uiState.value.grantedPermissions)
 
-    // ── Step 1 — type selection ───────────────────────────────────────────
+    // ── Step 1 ────────────────────────────────────────────────────────────
 
     fun toggleType(type: HealthRecordType) {
-        val current = _uiState.value.selectedTypes
-        updateSelectedTypes(if (type in current) current - type else current + type)
+        val cur = _uiState.value.selectedTypes
+        updateSelectedTypes(if (type in cur) cur - type else cur + type)
     }
 
     fun setAllInCategory(category: RecordCategory, selected: Boolean) {
-        val categoryTypes = HealthRecordType.byCategory[category] ?: return
-        val current = _uiState.value.selectedTypes
-        updateSelectedTypes(if (selected) current + categoryTypes else current - categoryTypes.toSet())
+        val types = HealthRecordType.byCategory[category] ?: return
+        val cur   = _uiState.value.selectedTypes
+        updateSelectedTypes(if (selected) cur + types else cur - types.toSet())
     }
 
     fun selectAll()   = updateSelectedTypes(HealthRecordType.all.toSet())
@@ -150,14 +167,14 @@ class WizardViewModel @Inject constructor(
         viewModelScope.launch { preferencesRepository.saveSelectedTypes(types) }
     }
 
-    // ── Step 2 — time range ───────────────────────────────────────────────
+    // ── Step 2 ────────────────────────────────────────────────────────────
 
     fun setTimeRange(range: TimeRange) {
         _uiState.update { it.copy(timeRange = range) }
         viewModelScope.launch { preferencesRepository.saveTimeRange(range) }
     }
 
-    // ── Step 3 — destination ──────────────────────────────────────────────
+    // ── Step 3 ────────────────────────────────────────────────────────────
 
     fun onSignInSuccess(email: String, displayName: String?) {
         _uiState.update { it.copy(googleAccountEmail = email, googleAccountName = displayName) }
@@ -175,15 +192,13 @@ class WizardViewModel @Inject constructor(
     fun setSpreadsheetName(name: String) =
         _uiState.update { it.copy(spreadsheetName = name) }
 
-    fun setSpreadsheetId(id: String) {
-        // Accept both raw IDs and full URLs
+    fun setSpreadsheetId(input: String) {
         val parsed = Regex("/spreadsheets/d/([a-zA-Z0-9_-]+)")
-            .find(id)?.groupValues?.getOrNull(1) ?: id.trim()
+            .find(input)?.groupValues?.getOrNull(1) ?: input.trim()
         _uiState.update { it.copy(spreadsheetId = parsed) }
     }
 
-    fun setExportMode(mode: ExportMode) = _uiState.update { it.copy(exportMode = mode) }
-
+    fun setExportMode(mode: ExportMode)     = _uiState.update { it.copy(exportMode = mode) }
     fun setScheduleType(type: ScheduleType) = _uiState.update { it.copy(scheduleType = type) }
 
     // ── Step 4 — export ───────────────────────────────────────────────────
@@ -194,19 +209,13 @@ class WizardViewModel @Inject constructor(
         if (state.selectedTypes.isEmpty()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(exportState = ExportState.Idle) }
-
-            // Create spreadsheet if needed
             val spreadsheetId = resolveSpreadsheetId(state, email) ?: return@launch
-
-            _uiState.update { it.copy(
-                spreadsheetId = spreadsheetId,
-                exportState   = ExportState.InProgress(),
-            )}
-
+            _uiState.update { it.copy(spreadsheetId = spreadsheetId) }
             runExport(state, spreadsheetId, email)
         }
     }
+
+    fun resetExportState() = _uiState.update { it.copy(exportState = ExportState.Idle) }
 
     private suspend fun resolveSpreadsheetId(state: WizardUiState, email: String): String? {
         return try {
@@ -217,8 +226,7 @@ class WizardViewModel @Inject constructor(
                     state.spreadsheetId?.takeIf { it.isNotBlank() }
                         ?: run {
                             _uiState.update { it.copy(
-                                exportState = ExportState.Error("Nessun ID foglio specificato"))
-                            }
+                                exportState = ExportState.Error("Nessun ID foglio specificato")) }
                             null
                         }
             }
@@ -226,37 +234,85 @@ class WizardViewModel @Inject constructor(
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             null
         } catch (e: Exception) {
-            _uiState.update { it.copy(exportState = ExportState.Error(e.message ?: "Errore")) }
+            _uiState.update { it.copy(
+                exportState = ExportState.Error(e.message ?: "Errore creazione foglio")) }
             null
         }
     }
 
     private suspend fun runExport(state: WizardUiState, spreadsheetId: String, email: String) {
         try {
-            val types = state.selectedTypes.toList()
+            val types        = state.selectedTypes.toList()
+            var totalRows    = 0
+            var skippedTypes = 0
+
+            // ── Phase 1: create all missing tabs in one API call ──────────
+            _uiState.update { it.copy(exportState = ExportState.InProgress(
+                currentType  = "Preparazione fogli…",
+                currentIndex = 0,
+                totalTypes   = types.size,
+            ))}
+
+            sheetsRepository.batchEnsureSheets(
+                spreadsheetId = spreadsheetId,
+                tabs          = types.map { it.sheetTabName to RecordSchema.forType(it).columns },
+                accountEmail  = email,
+            )
+
+            // ── Phase 2: per-type read → filter → write ───────────────────
             types.forEachIndexed { index, type ->
                 _uiState.update { it.copy(exportState = ExportState.InProgress(
-                    currentType = type.displayName,
-                    progress    = index.toFloat() / types.size,
+                    currentType  = type.displayName,
+                    currentIndex = index,
+                    totalTypes   = types.size,
                 ))}
 
-                val records = healthConnectRepository.readRecordsForType(type, state.timeRange)
                 val schema  = RecordSchema.forType(type)
-                val rows    = records.flatMap { schema.extractRows(it) }
+                val records = healthConnectRepository.readRecordsForType(type, state.timeRange)
+                var rows    = records.flatMap { schema.extractRows(it) }
 
-                when (state.exportMode) {
-                    ExportMode.OVERWRITE ->
-                        sheetsRepository.overwriteSheet(
-                            spreadsheetId, type.sheetTabName, schema.columns, rows, email)
-                    ExportMode.APPEND -> {
-                        sheetsRepository.ensureSheetExists(
-                            spreadsheetId, type.sheetTabName, schema.columns, email)
-                        sheetsRepository.appendRows(
-                            spreadsheetId, type.sheetTabName, rows, email)
+                // Smart append: discard rows already in the sheet
+                if (state.exportMode == ExportMode.APPEND && rows.isNotEmpty()) {
+                    val lastTs = sheetsRepository.getLastTimestamp(
+                        spreadsheetId, type.sheetTabName, email)
+                    if (lastTs != null) {
+                        rows = rows.filter { row ->
+                            (row.firstOrNull() as? String)?.let { it > lastTs } ?: true
+                        }
                     }
                 }
+
+                _uiState.update { it.copy(exportState = ExportState.InProgress(
+                    currentType  = type.displayName,
+                    currentIndex = index,
+                    totalTypes   = types.size,
+                    recordCount  = rows.size,
+                ))}
+
+                if (rows.isEmpty()) {
+                    skippedTypes++
+                } else {
+                    when (state.exportMode) {
+                        ExportMode.OVERWRITE ->
+                            sheetsRepository.overwriteSheetData(
+                                spreadsheetId, type.sheetTabName, schema.columns, rows, email)
+                        ExportMode.APPEND ->
+                            sheetsRepository.appendRows(
+                                spreadsheetId, type.sheetTabName, rows, email)
+                    }
+                    totalRows += rows.size
+                }
+
+                // Courtesy delay: ~400 ms keeps us well under 60 write-req/min
+                if (index < types.lastIndex) delay(400L)
             }
-            _uiState.update { it.copy(exportState = ExportState.Success) }
+
+            _uiState.update { it.copy(exportState = ExportState.Success(
+                totalRows     = totalRows,
+                skippedTypes  = skippedTypes,
+                spreadsheetId = spreadsheetId,
+            ))}
+
         } catch (e: UserRecoverableAuthIOException) {
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             _uiState.update { it.copy(exportState = ExportState.Idle) }
@@ -265,6 +321,4 @@ class WizardViewModel @Inject constructor(
                 ExportState.Error(e.message ?: "Errore durante l'export")) }
         }
     }
-
-    fun resetExportState() = _uiState.update { it.copy(exportState = ExportState.Idle) }
 }

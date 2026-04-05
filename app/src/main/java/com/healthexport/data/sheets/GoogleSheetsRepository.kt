@@ -14,15 +14,22 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private const val CHUNK_SIZE = 1000   // rows per Sheets API write request
+
 /**
  * All interactions with the Google Sheets API.
  *
- * Every method is a suspend function that executes blocking IO on [Dispatchers.IO].
- * Callers should catch:
+ * Design principles for Module 4:
+ * - [batchEnsureSheets] creates all required tabs in **one** API call instead of N,
+ *   reducing write-request count and staying within the 60 req/min quota.
+ * - [appendRows] splits large payloads into [CHUNK_SIZE]-row chunks.
+ * - [getLastTimestamp] powers smart-append: only rows newer than the last export are added.
+ *
+ * Every method is a suspend function dispatched to [Dispatchers.IO].
+ * Callers must catch:
  * - [com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException]
- *   → user has not authorised Sheets access; launch `exception.intent` to prompt them.
- * - [com.google.api.client.googleapis.json.GoogleJsonResponseException]
- *   → Sheets API returned an error (rate-limit, permission denied, …).
+ *   → launch `exception.intent` for OAuth authorisation.
+ * - [com.google.api.client.googleapis.json.GoogleJsonResponseException] → API error.
  * - [java.io.IOException] → network error.
  */
 @Singleton
@@ -37,83 +44,60 @@ class GoogleSheetsRepository @Inject constructor(
         title: String,
         accountEmail: String,
     ): String = withContext(Dispatchers.IO) {
-        val spreadsheet = Spreadsheet().setProperties(
-            SpreadsheetProperties().setTitle(title)
-        )
-        val service = client.build(accountEmail)
-        service.spreadsheets().create(spreadsheet)
+        val spreadsheet = Spreadsheet()
+            .setProperties(SpreadsheetProperties().setTitle(title))
+        client.build(accountEmail)
+            .spreadsheets().create(spreadsheet)
             .setFields("spreadsheetId")
             .execute()
             .spreadsheetId
     }
 
-    /** Returns the list of existing sheet (tab) titles in a spreadsheet. */
-    private suspend fun getSheetTitles(
-        service: Sheets,
-        spreadsheetId: String,
-    ): Set<String> = withContext(Dispatchers.IO) {
-        service.spreadsheets().get(spreadsheetId)
-            .setFields("sheets.properties.title")
-            .execute()
-            .sheets
-            ?.mapNotNull { it.properties?.title }
-            ?.toSet()
-            ?: emptySet()
-    }
-
     // ── Tab management ────────────────────────────────────────────────────
 
     /**
-     * Ensures a sheet (tab) named [sheetTitle] exists and has [headers] as its first row.
+     * Ensures all required sheet tabs exist, creating missing ones in a **single**
+     * batchUpdate call. Writes the header row only for newly created tabs.
      *
-     * - If the sheet does not exist: creates it and writes the header row.
-     * - If the sheet exists but has no headers: writes the header row.
-     * - If the sheet exists with headers already: does nothing (idempotent).
+     * Pass this the full list of (tabTitle → headers) before starting the
+     * per-type write loop to minimise API calls.
      */
-    suspend fun ensureSheetExists(
+    suspend fun batchEnsureSheets(
         spreadsheetId: String,
-        sheetTitle: String,
-        headers: List<String>,
+        tabs: List<Pair<String, List<String>>>,
         accountEmail: String,
     ) = withContext(Dispatchers.IO) {
-        val service    = client.build(accountEmail)
-        val existing   = getSheetTitles(service, spreadsheetId)
+        val service  = client.build(accountEmail)
+        val existing = getSheetTitles(service, spreadsheetId)
 
-        if (sheetTitle !in existing) {
-            // Create the tab
-            val addRequest = Request().setAddSheet(
-                AddSheetRequest().setProperties(SheetProperties().setTitle(sheetTitle))
+        val missing  = tabs.filter { (title, _) -> title !in existing }
+        if (missing.isEmpty()) return@withContext
+
+        // One batchUpdate to create all missing tabs at once
+        val requests = missing.map { (title, _) ->
+            Request().setAddSheet(
+                AddSheetRequest().setProperties(SheetProperties().setTitle(title))
             )
-            service.spreadsheets()
-                .batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest()
-                    .setRequests(listOf(addRequest)))
-                .execute()
+        }
+        service.spreadsheets()
+            .batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(requests))
+            .execute()
 
-            // Write headers
-            writeRange(service, spreadsheetId, "$sheetTitle!A1", listOf(headers))
+        // Write header row for each newly created tab
+        missing.forEach { (title, headers) ->
+            writeRange(service, spreadsheetId, "$title!A1", listOf(headers))
         }
     }
 
-    /** Clears all data in [sheetTitle] (header row included). */
-    suspend fun clearSheet(
-        spreadsheetId: String,
-        sheetTitle: String,
-        accountEmail: String,
-    ) = withContext(Dispatchers.IO) {
-        val service = client.build(accountEmail)
-        service.spreadsheets().values()
-            .clear(spreadsheetId, sheetTitle, ClearValuesRequest())
-            .execute()
-    }
-
-    // ── Data writing ──────────────────────────────────────────────────────
+    // ── Data writing — overwrite mode ─────────────────────────────────────
 
     /**
-     * Overwrites [sheetTitle] with [headers] + [rows] (clears first, then writes).
+     * Clears [sheetTitle] and rewrites it with [headers] + [rows].
      *
-     * Use for OVERWRITE export mode.
+     * Assumes the tab already exists — call [batchEnsureSheets] first.
+     * Skips the API call entirely when [rows] is empty (no data to write).
      */
-    suspend fun overwriteSheet(
+    suspend fun overwriteSheetData(
         spreadsheetId: String,
         sheetTitle: String,
         headers: List<String>,
@@ -121,30 +105,19 @@ class GoogleSheetsRepository @Inject constructor(
         accountEmail: String,
     ) = withContext(Dispatchers.IO) {
         val service = client.build(accountEmail)
-        val existing = getSheetTitles(service, spreadsheetId)
-
-        if (sheetTitle !in existing) {
-            val addRequest = Request().setAddSheet(
-                AddSheetRequest().setProperties(SheetProperties().setTitle(sheetTitle))
-            )
-            service.spreadsheets()
-                .batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest()
-                    .setRequests(listOf(addRequest)))
-                .execute()
-        } else {
-            service.spreadsheets().values()
-                .clear(spreadsheetId, sheetTitle, ClearValuesRequest())
-                .execute()
-        }
-
-        val allRows = listOf(headers) + rows
-        writeRange(service, spreadsheetId, "$sheetTitle!A1", allRows)
+        service.spreadsheets().values()
+            .clear(spreadsheetId, sheetTitle, ClearValuesRequest())
+            .execute()
+        writeRange(service, spreadsheetId, "$sheetTitle!A1", listOf(headers) + rows)
     }
 
+    // ── Data writing — append mode ────────────────────────────────────────
+
     /**
-     * Appends [rows] after the last occupied row in [sheetTitle].
+     * Appends [rows] after the last occupied row in [sheetTitle], in chunks of
+     * [CHUNK_SIZE] to stay within Sheets API request-size limits.
      *
-     * Use for APPEND export mode. Call [ensureSheetExists] first.
+     * Assumes the tab and its header row already exist — call [batchEnsureSheets] first.
      */
     suspend fun appendRows(
         spreadsheetId: String,
@@ -154,17 +127,62 @@ class GoogleSheetsRepository @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         if (rows.isEmpty()) return@withContext
         val service = client.build(accountEmail)
-        val range   = ValueRange()
-            .setRange("$sheetTitle!A1")
-            .setValues(rows.map { it.map { v -> v?.toString() } })
-        service.spreadsheets().values()
-            .append(spreadsheetId, "$sheetTitle!A1", range)
-            .setValueInputOption("RAW")
-            .setInsertDataOption("INSERT_ROWS")
-            .execute()
+        rows.chunked(CHUNK_SIZE).forEach { chunk ->
+            val body = ValueRange()
+                .setRange("$sheetTitle!A1")
+                .setValues(chunk.map { row -> row.map { v -> v?.toString() } })
+            service.spreadsheets().values()
+                .append(spreadsheetId, "$sheetTitle!A1", body)
+                .setValueInputOption("RAW")
+                .setInsertDataOption("INSERT_ROWS")
+                .execute()
+        }
+    }
+
+    // ── Smart-append support ──────────────────────────────────────────────
+
+    /**
+     * Returns the last non-empty value in column A of [sheetTitle], skipping the
+     * header row. Returns `null` when the sheet is empty or doesn't exist.
+     *
+     * Used by the smart-append logic in [WizardViewModel]: only rows with a
+     * timestamp string lexicographically greater than this value are exported,
+     * preventing duplicate rows across consecutive append exports.
+     *
+     * Works correctly with the `yyyy-MM-dd'T'HH:mm:ss` format used by
+     * [RecordSchema] because ISO 8601 local-datetime strings are naturally
+     * sortable as plain strings.
+     */
+    suspend fun getLastTimestamp(
+        spreadsheetId: String,
+        sheetTitle: String,
+        accountEmail: String,
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val response = client.build(accountEmail)
+                .spreadsheets().values()
+                .get(spreadsheetId, "$sheetTitle!A:A")
+                .execute()
+            response.getValues()
+                ?.drop(1)                         // skip header row
+                ?.lastOrNull { it.isNotEmpty() }
+                ?.firstOrNull()
+                ?.toString()
+        } catch (_: Exception) {
+            null   // sheet absent, empty, or network error — treat as "no prior export"
+        }
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────
+
+    private fun getSheetTitles(service: Sheets, spreadsheetId: String): Set<String> =
+        service.spreadsheets().get(spreadsheetId)
+            .setFields("sheets.properties.title")
+            .execute()
+            .sheets
+            ?.mapNotNull { it.properties?.title }
+            ?.toSet()
+            ?: emptySet()
 
     private fun writeRange(
         service: Sheets,
@@ -174,7 +192,7 @@ class GoogleSheetsRepository @Inject constructor(
     ) {
         val body = ValueRange()
             .setRange(range)
-            .setValues(rows.map { it.map { v -> v?.toString() } })
+            .setValues(rows.map { row -> row.map { v -> v?.toString() } })
         service.spreadsheets().values()
             .update(spreadsheetId, range, body)
             .setValueInputOption("RAW")
