@@ -1,6 +1,7 @@
 package com.healthexport.data.sheets
 
 import android.content.Context
+import android.util.Log
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -27,17 +28,19 @@ class GoogleSheetsClient @Inject constructor(
     private val jsonFactory  = GsonFactory.getDefaultInstance()
 
     fun build(accountEmail: String): Sheets {
-        // Use explicit method call instead of Kotlin property assignment:
-        // credential.selectedAccountName = x would set the public Java field directly,
-        // bypassing setSelectedAccountName() which also initialises the internal
-        // Account object that getToken() uses. Without it, getToken() sees null.
+        Log.d(TAG, "build() accountEmail='$accountEmail' (isBlank=${accountEmail.isBlank()})")
         val credential = GoogleAccountCredential
             .usingOAuth2(context, listOf(SheetsScopes.SPREADSHEETS))
             .setBackOff(ExponentialBackOff())
             .apply { setSelectedAccountName(accountEmail) }
+        Log.d(TAG, "build() credential.selectedAccountName='${credential.selectedAccountName}'")
 
         return Sheets.Builder(transport, jsonFactory, credential)
             .setApplicationName("HealthExport")
             .build()
+    }
+
+    companion object {
+        private const val TAG = "GoogleSheetsClient"
     }
 }

@@ -64,6 +64,7 @@ class GoogleAuthManager @Inject constructor(
                 credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
             ) {
                 val googleId = GoogleIdTokenCredential.createFrom(credential.data)
+                Log.d(TAG, "Sign-in OK: id='${googleId.id}' displayName='${googleId.displayName}'")
                 GoogleSignInResult.Success(
                     email       = googleId.id,
                     displayName = googleId.displayName,
