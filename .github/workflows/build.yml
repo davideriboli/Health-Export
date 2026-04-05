@@ -39,7 +39,7 @@ jobs:
       - name: Decode keystore
         if: ${{ github.event_name != 'pull_request' }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > ${{ runner.temp }}/release.jks
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode --ignore-garbage > ${{ runner.temp }}/release.jks
 
       # ── Build ────────────────────────────────────────────────────────────
       - name: Build release APK
