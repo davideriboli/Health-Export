@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,15 +13,14 @@ import androidx.navigation.compose.rememberNavController
 /**
  * Wizard navigation graph.
  *
- * Slide transitions give a linear, left-to-right feel that matches the
- * step-by-step nature of the wizard without being distracting.
+ * [viewModel] is created here (above the NavHost) so it is scoped to the
+ * Activity lifecycle and shared across all 4 destinations without re-creation.
  */
 @Composable
 fun WizardNavGraph(
     navController: NavHostController = rememberNavController(),
+    viewModel: WizardViewModel       = hiltViewModel(),
 ) {
-    val slideSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
-
     NavHost(
         navController    = navController,
         startDestination = WizardRoute.Step1.route,
@@ -51,13 +51,15 @@ fun WizardNavGraph(
     ) {
         composable(WizardRoute.Step1.route) {
             Step1DataSelectionScreen(
-                onNext = { navController.navigate(WizardRoute.Step2.route) },
+                viewModel = viewModel,
+                onNext    = { navController.navigate(WizardRoute.Step2.route) },
             )
         }
         composable(WizardRoute.Step2.route) {
             Step2TimeRangeScreen(
-                onBack = { navController.popBackStack() },
-                onNext = { navController.navigate(WizardRoute.Step3.route) },
+                viewModel = viewModel,
+                onBack    = { navController.popBackStack() },
+                onNext    = { navController.navigate(WizardRoute.Step3.route) },
             )
         }
         composable(WizardRoute.Step3.route) {
@@ -68,8 +70,8 @@ fun WizardNavGraph(
         }
         composable(WizardRoute.Step4.route) {
             Step4SummaryScreen(
-                onBack  = { navController.popBackStack() },
-                onExport = { /* module 3 */ },
+                onBack   = { navController.popBackStack() },
+                onExport = { /* Module 3 */ },
             )
         }
     }
