@@ -4,7 +4,7 @@
         Minimal XML theme — the full Material 3 theming lives in Compose (ui/theme/).
         This theme is required by the system before Compose is active (e.g. splash window).
     -->
-    <style name="Theme.HealthExport" parent="android:Theme.DeviceDefault.NoTitleBar">
+    <style name="Theme.HealthExport" parent="android:Theme.Material.NoTitleBar">
         <item name="android:windowBackground">@android:color/white</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
