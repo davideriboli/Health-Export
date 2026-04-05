@@ -1,6 +1,7 @@
 package com.healthexport.ui.wizard
 
 import android.content.Intent
+import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -92,6 +93,8 @@ data class WizardUiState(
     // Step 4
     val exportState: ExportState             = ExportState.Idle,
 )
+
+private const val TAG = "WizardViewModel"
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
@@ -241,9 +244,11 @@ class WizardViewModel @Inject constructor(
                         }
             }
         } catch (e: UserRecoverableAuthIOException) {
+            Log.w(TAG, "resolveSpreadsheetId: UserRecoverableAuthIOException — launching consent", e)
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             null
         } catch (e: Exception) {
+            Log.e(TAG, "resolveSpreadsheetId: ${e::class.qualifiedName}: ${e.message}", e)
             _uiState.update { it.copy(exportState = ExportState.Error(friendlyError(e))) }
             null
         }
@@ -251,6 +256,7 @@ class WizardViewModel @Inject constructor(
 
     private suspend fun runExport(state: WizardUiState, spreadsheetId: String, email: String) {
         try {
+            Log.d(TAG, "runExport: spreadsheetId=$spreadsheetId email=$email types=${state.selectedTypes.size}")
             val stats = exportRunner.run(
                 email         = email,
                 spreadsheetId = spreadsheetId,
@@ -279,9 +285,11 @@ class WizardViewModel @Inject constructor(
             ))}
 
         } catch (e: UserRecoverableAuthIOException) {
+            Log.w(TAG, "runExport: UserRecoverableAuthIOException — launching consent", e)
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             _uiState.update { it.copy(exportState = ExportState.Idle) }
         } catch (e: Exception) {
+            Log.e(TAG, "runExport: ${e::class.qualifiedName}: ${e.message}", e)
             _uiState.update { it.copy(exportState = ExportState.Error(friendlyError(e))) }
         }
     }
