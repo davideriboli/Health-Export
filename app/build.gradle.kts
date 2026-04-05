@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -20,7 +22,7 @@ android {
         // Google OAuth2 Web Client ID — required by Credential Manager.
         // Set in local.properties (GOOGLE_WEB_CLIENT_ID=xxx.apps.googleusercontent.com)
         // or via the GOOGLE_WEB_CLIENT_ID environment variable in CI.
-        val localProps = java.util.Properties().also { props ->
+        val localProps = Properties().also { props ->
             rootProject.file("local.properties").takeIf { it.exists() }
                 ?.inputStream()?.use { props.load(it) }
         }
