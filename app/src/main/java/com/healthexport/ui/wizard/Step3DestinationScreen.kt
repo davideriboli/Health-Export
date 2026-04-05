@@ -30,7 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +56,7 @@ fun Step3DestinationScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
+    var signInError by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Launcher for the Sheets auth recovery intent (UserRecoverableAuthIOException)
     val authRecoveryLauncher = rememberLauncherForActivityResult(
@@ -87,13 +91,16 @@ fun Step3DestinationScreen(
             if (uiState.googleAccountEmail == null) {
                 Button(
                     onClick = {
+                        signInError = null
                         scope.launch {
                             val result = viewModel.authManager.signIn(context)
                             when (result) {
-                                is GoogleSignInResult.Success ->
+                                is GoogleSignInResult.Success -> {
                                     viewModel.onSignInSuccess(result.email, result.displayName)
-                                is GoogleSignInResult.Error ->
-                                    { /* TODO: show snackbar */ }
+                                }
+                                is GoogleSignInResult.Error -> {
+                                    signInError = "Accesso non riuscito. Riprova."
+                                }
                                 GoogleSignInResult.Cancelled -> Unit
                             }
                         }
@@ -105,6 +112,14 @@ fun Step3DestinationScreen(
                         modifier = Modifier.size(20.dp))
                     Spacer(Modifier.padding(horizontal = 4.dp))
                     Text("Accedi con Google")
+                }
+                if (signInError != null) {
+                    Text(
+                        text     = signInError!!,
+                        style    = MaterialTheme.typography.bodySmall,
+                        color    = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
             } else {
                 AccountCard(
@@ -199,7 +214,7 @@ fun Step3DestinationScreen(
             if (uiState.scheduleType != ScheduleType.ONE_SHOT) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text  = "L'export automatico verrà configurato con WorkManager (Modulo 5).",
+                    text  = "WorkManager eseguirà l'export automaticamente con la frequenza scelta, anche con l'app chiusa. Riceverai una notifica al termine.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

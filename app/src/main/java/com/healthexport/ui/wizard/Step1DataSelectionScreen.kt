@@ -63,13 +63,19 @@ fun Step1DataSelectionScreen(
     val missingPermissions = viewModel.missingPermissions()
     val hasAllPermissions  = missingPermissions.isEmpty()
 
+    val totalTypes = HealthRecordType.all.size
+    val selectedCount = uiState.selectedTypes.size
+
     WizardScaffold(
         currentStep = 1,
         title       = "Dati da esportare",
-        subtitle    = "Scegli cosa esportare da Health Connect",
+        subtitle    = if (selectedCount == 0)
+            "Seleziona almeno un tipo di dato"
+        else
+            "$selectedCount / $totalTypes selezionati",
         onBack      = null,
         onNext      = onNext,
-        nextEnabled = uiState.selectedTypes.isNotEmpty(),
+        nextEnabled = selectedCount > 0,
     ) {
         LazyColumn {
 

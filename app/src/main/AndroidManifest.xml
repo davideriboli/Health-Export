@@ -47,6 +47,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- Required to post notifications on Android 13+ (API 33+).
+         On older versions notifications are always permitted. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".HealthExportApplication"
         android:label="@string/app_name"

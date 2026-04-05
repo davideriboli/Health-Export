@@ -5,6 +5,10 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import com.healthexport.data.export.ExportProgress
 import com.healthexport.data.export.ExportRunner
 import com.healthexport.data.google.GoogleAuthManager
@@ -240,8 +244,7 @@ class WizardViewModel @Inject constructor(
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             null
         } catch (e: Exception) {
-            _uiState.update { it.copy(
-                exportState = ExportState.Error(e.message ?: "Errore creazione foglio")) }
+            _uiState.update { it.copy(exportState = ExportState.Error(friendlyError(e))) }
             null
         }
     }
@@ -279,8 +282,7 @@ class WizardViewModel @Inject constructor(
             _events.emit(WizardEvent.SheetsAuthRequired(e.intent))
             _uiState.update { it.copy(exportState = ExportState.Idle) }
         } catch (e: Exception) {
-            _uiState.update { it.copy(exportState =
-                ExportState.Error(e.message ?: "Errore durante l'export")) }
+            _uiState.update { it.copy(exportState = ExportState.Error(friendlyError(e))) }
         }
     }
 
@@ -291,5 +293,21 @@ class WizardViewModel @Inject constructor(
             totalTypes   = progress.totalTypes,
             recordCount  = progress.recordCount,
         ))}
+    }
+
+    /** Converts a raw exception into a short, user-readable Italian error message. */
+    private fun friendlyError(e: Exception): String = when {
+        e is GoogleJsonResponseException -> when (e.statusCode) {
+            400       -> "Richiesta non valida. Controlla i dati inseriti."
+            403       -> "Accesso negato. Verifica i permessi sul foglio Google."
+            404       -> "Foglio non trovato. Controlla l'ID inserito."
+            429       -> "Troppe richieste alle API Google. Riprova tra qualche minuto."
+            in 500..599 -> "Errore temporaneo di Google. Riprova tra poco."
+            else      -> "Errore Google Sheets (${e.statusCode})."
+        }
+        e is UnknownHostException || e is SocketTimeoutException ->
+            "Nessuna connessione internet. Verifica la rete."
+        e is IOException -> "Errore di rete. Verifica la connessione."
+        else -> e.message ?: "Errore sconosciuto."
     }
 }
