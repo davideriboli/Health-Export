@@ -84,8 +84,8 @@ Or transfer the file to the device and open it with a file manager (enable *Inst
 | Module | Status | Description |
 |---|---|---|
 | 1 | ✅ Done | Project scaffold, Gradle, Material 3 theme, wizard navigation |
-| 2 | ⏳ Next | Health Connect integration, data type selection UI |
-| 3 | — | Google auth + Sheets write |
-| 4 | — | Append / overwrite logic, dynamic tabs |
-| 5 | — | WorkManager scheduled export |
-| 6 | — | UI polish, error handling, edge cases |
+| 2 | ✅ Done | Health Connect integration, data type selection UI |
+| 3 | ✅ Done | Google auth + Sheets write |
+| 4 | ✅ Done | Append / overwrite logic, dynamic tabs, smart deduplication |
+| 5 | ✅ Done | WorkManager scheduled export (daily / weekly / monthly) |
+| 6 | ⏳ Next | UI polish, error handling, edge cases |
