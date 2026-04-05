@@ -89,3 +89,12 @@ Or transfer the file to the device and open it with a file manager (enable *Inst
 | 4 | ✅ Done | Append / overwrite logic, dynamic tabs, smart deduplication |
 | 5 | ✅ Done | WorkManager scheduled export (daily / weekly / monthly) |
 | 6 | ⏳ Next | UI polish, error handling, edge cases |
+
+---
+
+## Screenshots
+
+![Screenshot_01](https://github.com/user-attachments/assets/8ce130b7-c8f9-4104-9aae-52a2e353ba1a)
+![Screenshot_02](https://github.com/user-attachments/assets/48b4bcd3-c27f-48e1-aa6b-52dffbb38fb3)
+![Screenshot_03](https://github.com/user-attachments/assets/005a565e-045b-4c30-a8e9-c4426b4bd378)
+
