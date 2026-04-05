@@ -1,0 +1,42 @@
+# Build outputs
+build/
+app/build/
+*/build/
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Local configuration (contains SDK path — never commit)
+local.properties
+
+# Keystore files — managed via GitHub Secrets
+*.jks
+*.keystore
+
+# Google credentials — managed via GitHub Secrets
+google-services.json
+client_secret*.json
+credentials*.json
+
+# APK / AAB artifacts — built by CI
+*.apk
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

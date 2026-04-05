@@ -1,0 +1,20 @@
+# Compiled output — enormi, generati automaticamente
+build/
+app/build/
+*/build/
+*.apk
+*.aab
+*.dex
+*.class
+
+# Cache Gradle — non contiene codice sorgente utile
+.gradle/
+.cxx/
+
+# Artefatti locali IntelliJ / Android Studio
+.idea/
+captures/
+
+# File di sistema
+.DS_Store
+Thumbs.db
