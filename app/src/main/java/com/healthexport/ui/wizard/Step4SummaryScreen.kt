@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -31,6 +32,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.healthexport.data.model.ExportMode
+import com.healthexport.data.model.ScheduleType
 import com.healthexport.ui.components.WizardScaffold
 
 @Composable
@@ -130,7 +133,7 @@ fun Step4SummaryScreen(
 
                 is ExportState.InProgress -> ExportProgressBlock(state)
 
-                is ExportState.Success -> ExportSuccessBlock(state)
+                is ExportState.Success -> ExportSuccessBlock(state, uiState.scheduleType)
 
                 is ExportState.Error -> ExportErrorBlock(state.message)
             }
@@ -187,7 +190,7 @@ private fun ExportProgressBlock(state: ExportState.InProgress) {
 }
 
 @Composable
-private fun ExportSuccessBlock(state: ExportState.Success) {
+private fun ExportSuccessBlock(state: ExportState.Success, scheduleType: ScheduleType) {
     Column(
         modifier            = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -218,6 +221,40 @@ private fun ExportSuccessBlock(state: ExportState.Success) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        // Schedule badge — shown only when a recurring export has been set up
+        if (scheduleType != ScheduleType.ONE_SHOT) {
+            val nextLabel = when (scheduleType) {
+                ScheduleType.DAILY   -> "Prossimo export: domani"
+                ScheduleType.WEEKLY  -> "Prossimo export: tra 7 giorni"
+                ScheduleType.MONTHLY -> "Prossimo export: tra 30 giorni"
+                ScheduleType.ONE_SHOT -> ""
+            }
+            Surface(
+                shape    = RoundedCornerShape(8.dp),
+                color    = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier             = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment    = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint               = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier           = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.padding(horizontal = 4.dp))
+                    Text(
+                        text  = nextLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
         }
     }
 }

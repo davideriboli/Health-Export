@@ -5,17 +5,20 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
+import com.healthexport.data.export.ExportProgress
+import com.healthexport.data.export.ExportRunner
 import com.healthexport.data.google.GoogleAuthManager
 import com.healthexport.data.google.GoogleSignInResult
 import com.healthexport.data.healthconnect.HealthConnectRepository
 import com.healthexport.data.healthconnect.HealthRecordType
 import com.healthexport.data.healthconnect.RecordCategory
 import com.healthexport.data.healthconnect.TimeRange
+import com.healthexport.data.model.ExportMode
+import com.healthexport.data.model.ScheduleType
 import com.healthexport.data.preferences.UserPreferencesRepository
 import com.healthexport.data.sheets.GoogleSheetsRepository
-import com.healthexport.data.sheets.RecordSchema
+import com.healthexport.worker.ExportScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -31,8 +34,9 @@ import javax.inject.Inject
 
 enum class SdkStatus       { CHECKING, AVAILABLE, UNAVAILABLE, UPDATE_REQUIRED }
 enum class SpreadsheetMode { CREATE_NEW, USE_EXISTING }
-enum class ExportMode      { OVERWRITE, APPEND }
-enum class ScheduleType    { ONE_SHOT, DAILY, WEEKLY, MONTHLY }
+
+// ExportMode and ScheduleType live in data/model/ExportConfig.kt so WorkManager can
+// read them without depending on the UI layer.
 
 // ── Export state ──────────────────────────────────────────────────────────────
 
@@ -43,7 +47,7 @@ sealed class ExportState {
         val currentType: String  = "",
         val currentIndex: Int    = 0,
         val totalTypes: Int      = 0,
-        val recordCount: Int     = 0,   // records found for current type
+        val recordCount: Int     = 0,
     ) : ExportState() {
         val progress: Float
             get() = if (totalTypes > 0) currentIndex.toFloat() / totalTypes else 0f
@@ -92,6 +96,8 @@ class WizardViewModel @Inject constructor(
     private val healthConnectRepository: HealthConnectRepository,
     private val preferencesRepository: UserPreferencesRepository,
     private val sheetsRepository: GoogleSheetsRepository,
+    private val exportRunner: ExportRunner,
+    private val exportScheduler: ExportScheduler,
     val authManager: GoogleAuthManager,
 ) : ViewModel() {
 
@@ -242,74 +248,30 @@ class WizardViewModel @Inject constructor(
 
     private suspend fun runExport(state: WizardUiState, spreadsheetId: String, email: String) {
         try {
-            val types        = state.selectedTypes.toList()
-            var totalRows    = 0
-            var skippedTypes = 0
-
-            // ── Phase 1: create all missing tabs in one API call ──────────
-            _uiState.update { it.copy(exportState = ExportState.InProgress(
-                currentType  = "Preparazione fogli…",
-                currentIndex = 0,
-                totalTypes   = types.size,
-            ))}
-
-            sheetsRepository.batchEnsureSheets(
+            val stats = exportRunner.run(
+                email         = email,
                 spreadsheetId = spreadsheetId,
-                tabs          = types.map { it.sheetTabName to RecordSchema.forType(it).columns },
-                accountEmail  = email,
+                types         = state.selectedTypes.toList(),
+                timeRange     = state.timeRange,
+                exportMode    = state.exportMode,
+                onProgress    = { progress -> updateProgress(progress) },
             )
 
-            // ── Phase 2: per-type read → filter → write ───────────────────
-            types.forEachIndexed { index, type ->
-                _uiState.update { it.copy(exportState = ExportState.InProgress(
-                    currentType  = type.displayName,
-                    currentIndex = index,
-                    totalTypes   = types.size,
-                ))}
+            // Persist config so WorkManager can re-run without UI
+            preferencesRepository.saveSpreadsheetId(spreadsheetId)
+            preferencesRepository.saveExportMode(state.exportMode)
+            preferencesRepository.saveScheduleType(state.scheduleType)
 
-                val schema  = RecordSchema.forType(type)
-                val records = healthConnectRepository.readRecordsForType(type, state.timeRange)
-                var rows    = records.flatMap { schema.extractRows(it) }
-
-                // Smart append: discard rows already in the sheet
-                if (state.exportMode == ExportMode.APPEND && rows.isNotEmpty()) {
-                    val lastTs = sheetsRepository.getLastTimestamp(
-                        spreadsheetId, type.sheetTabName, email)
-                    if (lastTs != null) {
-                        rows = rows.filter { row ->
-                            (row.firstOrNull() as? String)?.let { it > lastTs } ?: true
-                        }
-                    }
-                }
-
-                _uiState.update { it.copy(exportState = ExportState.InProgress(
-                    currentType  = type.displayName,
-                    currentIndex = index,
-                    totalTypes   = types.size,
-                    recordCount  = rows.size,
-                ))}
-
-                if (rows.isEmpty()) {
-                    skippedTypes++
-                } else {
-                    when (state.exportMode) {
-                        ExportMode.OVERWRITE ->
-                            sheetsRepository.overwriteSheetData(
-                                spreadsheetId, type.sheetTabName, schema.columns, rows, email)
-                        ExportMode.APPEND ->
-                            sheetsRepository.appendRows(
-                                spreadsheetId, type.sheetTabName, rows, email)
-                    }
-                    totalRows += rows.size
-                }
-
-                // Courtesy delay: ~400 ms keeps us well under 60 write-req/min
-                if (index < types.lastIndex) delay(400L)
+            // Schedule or cancel periodic work
+            if (state.scheduleType == ScheduleType.ONE_SHOT) {
+                exportScheduler.cancel()
+            } else {
+                exportScheduler.schedule(state.scheduleType)
             }
 
             _uiState.update { it.copy(exportState = ExportState.Success(
-                totalRows     = totalRows,
-                skippedTypes  = skippedTypes,
+                totalRows     = stats.totalRows,
+                skippedTypes  = stats.skippedTypes,
                 spreadsheetId = spreadsheetId,
             ))}
 
@@ -320,5 +282,14 @@ class WizardViewModel @Inject constructor(
             _uiState.update { it.copy(exportState =
                 ExportState.Error(e.message ?: "Errore durante l'export")) }
         }
+    }
+
+    private fun updateProgress(progress: ExportProgress) {
+        _uiState.update { it.copy(exportState = ExportState.InProgress(
+            currentType  = progress.currentType,
+            currentIndex = progress.currentIndex,
+            totalTypes   = progress.totalTypes,
+            recordCount  = progress.recordCount,
+        ))}
     }
 }
